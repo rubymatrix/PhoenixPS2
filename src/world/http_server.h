@@ -41,7 +41,7 @@ public:
 
 private:
     Scheduler&                     scheduler_;
-    httplib::Server                httpServer_;
+    std::unique_ptr<httplib::Server> httpServer_; // an SSLServer when network.HTTP_TLS is on
     std::atomic<timer::time_point> lastUpdate_;
 
     struct APIDataCache

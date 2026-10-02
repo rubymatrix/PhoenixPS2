@@ -60,7 +60,23 @@ Payload:
 
 `name` is optional. `exp` is optional; when it is present, the key set stops being accepted after it.
 
-To load a key set, a world:
+A world's key set also describes the world, in an optional `world` member. Because it is signed, a provider can
+take it from anywhere and still trust it as much as the world's id:
+
+```json
+"world": { "gateway": "https://ps2.example.net:8088", "expansions": 4095, "search": "203.0.113.7:54002" }
+```
+
+| field | meaning |
+|---|---|
+| `gateway` | base URL of the world's gateway (see "World gateway API") |
+| `search` | optional: the world's search server as `IPv4:port`, which the provider gives the client with the map server |
+| `expansions` | the expansions the world enables, as the FFXI lobby's expansion bitmask: 0x0001 base game, 0x0002 RoZ, 0x0004 CoP, 0x0008 ToAU, 0x0010 WotG, 0x0020 ACP, 0x0040 MKE, 0x0080 ASA, 0x0100/0x0200/0x0400 Abyssea, 0x0800 SoA |
+
+Every server serves its current key set at `GET <base>/xi/v1/keyset` (`text/plain`, no authentication). For a
+world, `<base>` is its gateway.
+
+To load a key set, a server:
 
 1. decodes `idk` and computes its server id;
 2. checks the signature with `idk`;
@@ -183,5 +199,82 @@ Before writing the session, the world checks four things:
 A token that passes verification is consumed even if the world then refuses the entry. The provider issues a new
 token for each attempt.
 
-A world publishes its own signed key set (with no signing keys, if it signs nothing yet). That lets providers
-learn and check its server id and name the same way worlds check providers.
+### Characters
+
+These calls act for a signed-in player. Each request carries a fresh `xi.account/1` token addressed to the
+world:
+
+    Authorization: XiToken v4.public....
+
+The world maps the player's global id (`iss:sub`) to one of its accounts. It creates that account, and the mapping,
+when the player creates their first character there. Every call answers JSON, and errors use the same
+`{"ok":false,"error":"<name>"}` shape: `400` for a rejected token or request, `404 unknown_character`, `409` for a
+refusal.
+
+`GET <gateway>/xi/v1/characters` lists the player's characters on this world:
+
+```json
+{ "ok": true, "characters": [ {
+    "id": 4097, "name": "Ayame", "rename": false,
+    "zone": 230, "nation": 0, "race": 2, "face": 4, "size": 1, "gm": false,
+    "job": { "main": 1, "main_level": 30, "sub": 6 },
+    "look": { "head": 0, "body": 8, "hands": 8, "legs": 8, "feet": 8, "main": 0, "sub": 0 }
+} ] }
+```
+
+A player with no account on the world gets an empty list.
+
+`POST <gateway>/xi/v1/characters` creates a character. The body is a JSON object:
+
+```json
+{ "name": "Ayame", "race": 2, "face": 4, "size": 1, "job": 1, "nation": 0 }
+```
+
+The world chooses the starting zone. It answers `200 {"ok":true,"id":4097}`, or one of these:
+
+* `400 bad_request` for invalid fields;
+* `409 name_taken`, `409 name_invalid`, `409 not_permitted` (creation disabled, or the account is banned);
+* `409 full` when no character id is free.
+
+Character ids fit in 16 bits, because the PlayOnline content sub id carries them.
+
+`DELETE <gateway>/xi/v1/characters/<id>` deletes one of the player's characters and answers `200 {"ok":true}`.
+
+`POST <gateway>/xi/v1/characters/<id>/name` renames a character the world has flagged for renaming. The body is
+`{"name": "..."}`, and the answers are the same as for creation.
+
+### Transport
+
+Tokens carry claims about players, and world-entry tokens carry session keys, so a gateway MUST use TLS unless it
+is reached over a loopback or private link. A world may use a self-signed certificate. A provider then pins it by
+the base64url SHA-256 of the certificate's DER encoding (for example `pin: "sha256:Jx3…"`) instead of validating
+a chain.
+
+## World list and registry
+
+A provider lists worlds to its players. For each world it needs the server id it trusts, plus the world's signed
+key set, which names the world and its gateway. A provider may take worlds from a **registry**: a signed document
+listing servers, published by whoever runs the federation. It is a v4.public token signed by the registry's
+identity key, with the footer `{"idk": "k4.public..."}` and this payload:
+
+```json
+{
+  "typ": "xi.registry/1",
+  "iss": "xi1.<registry server id>",
+  "name": "PS2 Federation",
+  "iat": "2026-10-01T12:00:00Z",
+  "servers": [
+    { "id": "xi1.Mu9wtwpxwOsrgZyRkVr0Uw", "role": "world",
+      "keyset": "https://ps2.example.net:8088/xi/v1/keyset", "pin": "sha256:Jx3…" },
+    { "id": "xi1.aDtov18q_lxyuiZzRwvExw", "role": "provider",
+      "keyset": "https://crystal.example.net/xi/v1/keyset" }
+  ]
+}
+```
+
+A registry is checked like a key set: `iss` must be the id of its `idk`, and the id the operator chose to trust.
+`pin` is optional.
+
+Listing a server in a registry only says where to find it. The entry's `id` is what is trusted, and the key set
+fetched from `keyset` is still checked against that id. A registry operator can add or remove servers, but cannot
+impersonate one.

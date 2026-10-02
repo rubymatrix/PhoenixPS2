@@ -35,9 +35,13 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/ext/xitoken ${CMAKE_BINARY_DIR}/ext/xitoken
 
 xi_add_library(xi_world_lib ${SOURCES})
 target_include_directories(xi_world_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# HTTPS for the HTTP server (network.HTTP_TLS). httplib is only used by xi_world, so every file that includes it
+# sees the same setting.
+target_compile_definitions(xi_world_lib PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
 target_link_libraries(xi_world_lib
     PUBLIC
         xi_data_core
+        xi_connect_lib # character name rules and creation (login_helpers), shared with xi_connect
         xitoken
         ${WORLD_ONLY_EXTERNAL_LIBS}
 )

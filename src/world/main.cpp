@@ -21,6 +21,12 @@
 
 #include "world_application.h"
 
+// openssl applink.c prevents issues with debug vs release vs threaded/single threaded .dlls at runtime
+// (the HTTPS server reads and writes its certificate files through OpenSSL)
+#ifdef _WIN32
+#include <ms/applink.c>
+#endif
+
 int main(int argc, char** argv)
 {
     const auto worldApp = std::make_unique<WorldApplication>(argc, argv);

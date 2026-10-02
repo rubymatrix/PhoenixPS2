@@ -40,14 +40,27 @@ xi.settings.network =
     ENABLE_HTTP = false,
     HTTP_HOST   = 'localhost',
     HTTP_PORT   = 8088,
+    -- HTTPS for the HTTP server. With the default file names, a self-signed certificate is made on first start;
+    -- xi_world logs its pin (sha256:...), which clients such as the Crystal lobby use to trust it.
+    HTTP_TLS      = false,
+    HTTP_TLS_CERT = 'world.cert',
+    HTTP_TLS_KEY  = 'world.key',
 
     -- Federation gateway (ext/xitoken/SPEC.md): PlayOnline providers such as Project Crystal admit players with
     -- signed, single-use world-entry tokens (POST /xi/v1/world-entry) instead of writing accounts_sessions.
     -- Served by xi_world's HTTP server, so it needs ENABLE_HTTP. Keep HTTP_HOST on a loopback or private
     -- address, or put a TLS proxy in front: world-entry tokens carry the map session key.
     ENABLE_FEDERATION_GATEWAY = false,
-    -- This world's server id; providers address tokens to it. `xitoken-cli keygen` prints it for a new identity key.
-    FEDERATION_SERVER_ID = '',
+    -- This world's identity key (a k4.secret file; `xitoken-cli keygen --out <file>` makes one and prints the world's
+    -- server id). The id is what providers address tokens to and trust. Keep the file private.
+    FEDERATION_IDENTITY_KEY = 'settings/federation/identity.key',
+    -- The name and gateway URL this world publishes in its key set (GET /xi/v1/keyset). Empty: main.SERVER_NAME and
+    -- http(s)://HTTP_HOST:HTTP_PORT.
+    FEDERATION_NAME       = '',
+    FEDERATION_PUBLIC_URL = '',
+    -- This world's search server as players reach it ('IPv4:port', e.g. '203.0.113.7:54002'); providers pass it to the
+    -- client with the map server. Empty: not published.
+    FEDERATION_SEARCH_ADDRESS = '',
     -- Trusted providers: one signed key set per provider, named <provider server id>.keyset. Re-read every minute.
     FEDERATION_TRUST_DIR = 'settings/federation',
 

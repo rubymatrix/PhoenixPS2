@@ -25,12 +25,65 @@
 #include "common/logging.h"
 #include "common/settings.h"
 #include "common/utils.h"
+#include "common/cert_helpers.h"
 #include "common/xi.h"
+
+#include <openssl/evp.h>
+#include <openssl/pem.h>
 
 #include <unordered_set>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
+
+namespace
+{
+    // "sha256:" + base64url of the SHA-256 of the certificate's DER encoding: the pin a client checks against a
+    // self-signed certificate (ext/xitoken/SPEC.md "Transport").
+    auto certificatePin(const std::string& certFile) -> std::string
+    {
+        FILE* file = fopen(certFile.c_str(), "r");
+        if (!file)
+        {
+            return {};
+        }
+        X509* cert = PEM_read_X509(file, nullptr, nullptr, nullptr);
+        fclose(file);
+        if (!cert)
+        {
+            return {};
+        }
+        unsigned char* der    = nullptr;
+        const int      length = i2d_X509(cert, &der);
+        X509_free(cert);
+        if (length <= 0)
+        {
+            return {};
+        }
+        unsigned char hash[EVP_MAX_MD_SIZE];
+        unsigned int  hashLength = 0;
+        EVP_Digest(der, static_cast<size_t>(length), hash, &hashLength, EVP_sha256(), nullptr);
+        OPENSSL_free(der);
+
+        static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        std::string           out        = "sha256:";
+        for (unsigned int i = 0; i < hashLength; i += 3)
+        {
+            const uint32 v = hash[i] << 16 | (i + 1 < hashLength ? hash[i + 1] << 8 : 0) | (i + 2 < hashLength ? hash[i + 2] : 0);
+            out += alphabet[v >> 18 & 63];
+            out += alphabet[v >> 12 & 63];
+            if (i + 1 < hashLength)
+            {
+                out += alphabet[v >> 6 & 63];
+            }
+            if (i + 2 < hashLength)
+            {
+                out += alphabet[v & 63];
+            }
+        }
+        return out;
+    }
+} // namespace
 
 HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&)> registerRoutes)
 : scheduler_(scheduler)
@@ -44,19 +97,40 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
     auto host = settings::get<std::string>("network.HTTP_HOST");
     auto port = settings::get<uint16>("network.HTTP_PORT");
 
-    ShowInfoFmt("Starting HTTP Server on http://{}:{}/api", host, port);
+    // TLS: the certificate and key named by network.HTTP_TLS_CERT / HTTP_TLS_KEY, self-signed on first start when
+    // neither exists. Clients that cannot validate it pin it instead; the pin is logged here.
+    if (settings::get<bool>("network.HTTP_TLS"))
+    {
+        auto cert = settings::get<std::string>("network.HTTP_TLS_CERT");
+        auto key  = settings::get<std::string>("network.HTTP_TLS_KEY");
+        if (cert == "world.cert" && key == "world.key")
+        {
+            certificateHelpers::generateSelfSignedCert("world");
+        }
+        httpServer_ = std::make_unique<httplib::SSLServer>(cert.c_str(), key.c_str());
+        if (!httpServer_->is_valid())
+        {
+            ShowErrorFmt("HTTP Server: cannot load TLS certificate {} / key {}", cert, key);
+        }
+        ShowInfoFmt("Starting HTTPS Server on https://{}:{}/api (certificate pin {})", host, port, certificatePin(cert));
+    }
+    else
+    {
+        httpServer_ = std::make_unique<httplib::Server>();
+        ShowInfoFmt("Starting HTTP Server on http://{}:{}/api", host, port);
+    }
 
     scheduler_.postToWorkerThread(
         [this, host, port, registerRoutes = std::move(registerRoutes)]()
         {
-            httpServer_.Get(
+            httpServer_->Get(
                 "/api",
                 [&](const httplib::Request& req, httplib::Response& res)
                 {
                     res.set_content("Hello LSB API", "text/plain");
                 });
 
-            httpServer_.Get(
+            httpServer_->Get(
                 "/api/sessions",
                 [&](const httplib::Request& req, httplib::Response& res)
                 {
@@ -68,7 +142,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
                                        });
                 });
 
-            httpServer_.Get(
+            httpServer_->Get(
                 "/api/ips",
                 [&](const httplib::Request& req, httplib::Response& res)
                 {
@@ -81,7 +155,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
                         });
                 });
 
-            httpServer_.Get(
+            httpServer_->Get(
                 "/api/zones",
                 [&](const httplib::Request& req, httplib::Response& res)
                 {
@@ -94,7 +168,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
                         });
                 });
 
-            httpServer_.Get(
+            httpServer_->Get(
                 R"(/api/zones/(\d+))",
                 [&](const httplib::Request& req, httplib::Response& res)
                 {
@@ -116,7 +190,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
                     }
                 });
 
-            httpServer_.Get(
+            httpServer_->Get(
                 "/api/settings",
                 [&](const httplib::Request& req, httplib::Response& res)
                 {
@@ -167,10 +241,10 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
 
             if (registerRoutes)
             {
-                registerRoutes(httpServer_);
+                registerRoutes(*httpServer_);
             }
 
-            httpServer_.set_error_handler(
+            httpServer_->set_error_handler(
                 [](const httplib::Request& /*req*/, httplib::Response& res) -> httplib::Server::HandlerResponse
                 {
                     // Routes that answer an error with their own body (e.g. the federation gateway's JSON) keep it.
@@ -192,7 +266,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
                     return httplib::Server::HandlerResponse::Handled;
                 });
 
-            httpServer_.set_logger(
+            httpServer_->set_logger(
                 [](const httplib::Request& req, const httplib::Response& res)
                 {
                     // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
@@ -208,13 +282,13 @@ HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&
                     }
                 });
 
-            httpServer_.listen(host, port); // blocks
+            httpServer_->listen(host, port); // blocks
         });
 }
 
 HTTPServer::~HTTPServer()
 {
-    httpServer_.stop();
+    httpServer_->stop();
 }
 
 void HTTPServer::LockingUpdate()

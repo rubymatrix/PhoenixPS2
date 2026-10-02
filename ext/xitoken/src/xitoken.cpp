@@ -497,106 +497,163 @@ auto isValidServerId(std::string_view id) -> bool
     return body && body->size() == 16;
 }
 
+namespace
+{
+    // Documents signed by a server's identity key: key sets and registries.
+    struct OpenedDocument
+    {
+        std::string                serverId;
+        std::optional<std::string> name;
+        int64_t                    issuedAt = 0;
+        std::optional<int64_t>     expires;
+        json                       payload;
+    };
+
+    auto signDocument(const SigningKey& identity, std::string_view type, const std::optional<std::string>& name, int64_t issuedAt,
+                      std::optional<int64_t> expires, const json& body) -> std::string
+    {
+        json payload = { { "typ", type }, { "iss", identity.serverId() }, { "iat", rfc3339::format(issuedAt) } };
+        if (name)
+        {
+            payload["name"] = *name;
+        }
+        if (expires)
+        {
+            payload["exp"] = rfc3339::format(*expires);
+        }
+        for (const auto& [key, value] : body.items())
+        {
+            payload[key] = value;
+        }
+        json footer = { { "idk", identity.paserkPublic() } };
+        return paseto::sign(identity, payload.dump(), footer.dump());
+    }
+
+    auto openDocument(std::string_view token, std::string_view type, int64_t now, std::string& error) -> std::optional<OpenedDocument>
+    {
+        auto fail = [&](std::string message) -> std::optional<OpenedDocument>
+        {
+            error = std::move(message);
+            return std::nullopt;
+        };
+        while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())))
+        {
+            token.remove_suffix(1);
+        }
+        while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())))
+        {
+            token.remove_prefix(1);
+        }
+        const std::string typeName(type);
+
+        auto parts  = paseto::parse(token);
+        auto footer = parts ? parseObject(parts->footer) : std::nullopt;
+        auto idk    = footer ? getString(*footer, "idk") : std::nullopt;
+        auto pub    = idk ? decodePaserkPublic(*idk) : std::nullopt;
+        if (!pub)
+        {
+            return fail("not a signed " + typeName + " document");
+        }
+        auto verified = paseto::verify(token, *pub);
+        if (!verified)
+        {
+            return fail(typeName + " signature is not valid");
+        }
+        auto payload = parseObject(verified->payload);
+        if (!payload)
+        {
+            return fail(typeName + " payload is not a JSON object");
+        }
+
+        OpenedDocument doc;
+        doc.serverId = serverIdFromPublicKey(*pub);
+        if (getString(*payload, "typ") != std::optional<std::string>(typeName))
+        {
+            return fail("not an " + typeName + " document");
+        }
+        if (getString(*payload, "iss") != doc.serverId)
+        {
+            return fail(typeName + " iss does not match its identity key");
+        }
+        auto iat     = getString(*payload, "iat");
+        auto iatTime = iat ? rfc3339::parse(*iat) : std::nullopt;
+        if (!iatTime)
+        {
+            return fail(typeName + " has no valid iat");
+        }
+        doc.issuedAt = *iatTime;
+        if (payload->contains("exp"))
+        {
+            auto exp     = getString(*payload, "exp");
+            auto expTime = exp ? rfc3339::parse(*exp) : std::nullopt;
+            if (!expTime)
+            {
+                return fail(typeName + " exp is not valid");
+            }
+            if (now >= *expTime)
+            {
+                return fail(typeName + " has expired");
+            }
+            doc.expires = expTime;
+        }
+        if (payload->contains("name"))
+        {
+            doc.name = getString(*payload, "name");
+            if (!doc.name)
+            {
+                return fail(typeName + " name must be a string");
+            }
+        }
+        doc.payload = std::move(*payload);
+        return doc;
+    }
+} // namespace
+
 auto KeySet::create(const SigningKey& identity, const std::optional<std::string>& name, const std::vector<SigningKey>& signingKeys,
-                    int64_t issuedAt, std::optional<int64_t> expires) -> std::string
+                    int64_t issuedAt, std::optional<int64_t> expires, const std::optional<WorldInfo>& world) -> std::string
 {
     json keys = json::array();
     for (const auto& key : signingKeys)
     {
         keys.push_back({ { "kid", key.keyId() }, { "public", key.paserkPublic() } });
     }
-    json payload = { { "typ", type }, { "iss", identity.serverId() }, { "iat", rfc3339::format(issuedAt) }, { "keys", keys } };
-    if (name)
+    json body = { { "keys", keys } };
+    if (world)
     {
-        payload["name"] = *name;
+        body["world"] = { { "gateway", world->gateway }, { "expansions", world->expansions } };
+        if (world->search)
+        {
+            body["world"]["search"] = *world->search;
+        }
     }
-    if (expires)
-    {
-        payload["exp"] = rfc3339::format(*expires);
-    }
-    json footer = { { "idk", identity.paserkPublic() } };
-    return paseto::sign(identity, payload.dump(), footer.dump());
+    return signDocument(identity, type, name, issuedAt, expires, body);
 }
 
 auto KeySet::open(std::string_view token, int64_t now, std::string* error) -> std::optional<KeySet>
 {
-    auto fail = [&](std::string message) -> std::optional<KeySet>
+    std::string message;
+    auto        fail = [&](std::string text) -> std::optional<KeySet>
     {
         if (error)
         {
-            *error = std::move(message);
+            *error = std::move(text);
         }
         return std::nullopt;
     };
-    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())))
+    auto doc = openDocument(token, type, now, message);
+    if (!doc)
     {
-        token.remove_suffix(1);
-    }
-    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())))
-    {
-        token.remove_prefix(1);
-    }
-
-    auto parts  = paseto::parse(token);
-    auto footer = parts ? parseObject(parts->footer) : std::nullopt;
-    auto idk    = footer ? getString(*footer, "idk") : std::nullopt;
-    auto pub    = idk ? decodePaserkPublic(*idk) : std::nullopt;
-    if (!pub)
-    {
-        return fail("not a signed key set");
-    }
-    auto verified = paseto::verify(token, *pub);
-    if (!verified)
-    {
-        return fail("key set signature is not valid");
-    }
-    auto payload = parseObject(verified->payload);
-    if (!payload)
-    {
-        return fail("key set payload is not a JSON object");
+        return fail(message);
     }
 
     KeySet set;
-    set.serverId = serverIdFromPublicKey(*pub);
-    if (getString(*payload, "typ") != std::optional<std::string>(type))
-    {
-        return fail("not an xi.keyset/1 document");
-    }
-    if (getString(*payload, "iss") != set.serverId)
-    {
-        return fail("key set iss does not match its identity key");
-    }
-    auto iat = getString(*payload, "iat");
-    auto iatTime = iat ? rfc3339::parse(*iat) : std::nullopt;
-    if (!iatTime)
-    {
-        return fail("key set has no valid iat");
-    }
-    set.issuedAt = *iatTime;
-    if (payload->contains("exp"))
-    {
-        auto exp     = getString(*payload, "exp");
-        auto expTime = exp ? rfc3339::parse(*exp) : std::nullopt;
-        if (!expTime)
-        {
-            return fail("key set exp is not valid");
-        }
-        if (now >= *expTime)
-        {
-            return fail("key set has expired");
-        }
-        set.expires = expTime;
-    }
-    if (payload->contains("name"))
-    {
-        set.name = getString(*payload, "name");
-        if (!set.name)
-        {
-            return fail("key set name must be a string");
-        }
-    }
-    auto keys = payload->find("keys");
-    if (keys == payload->end() || !keys->is_array())
+    set.serverId = doc->serverId;
+    set.name     = doc->name;
+    set.issuedAt = doc->issuedAt;
+    set.expires  = doc->expires;
+
+    auto keys = doc->payload.find("keys");
+    if (keys == doc->payload.end() || !keys->is_array())
     {
         return fail("key set has no keys array");
     }
@@ -626,7 +683,105 @@ auto KeySet::open(std::string_view token, int64_t now, std::string* error) -> st
         }
         set.keys.push_back(TrustedKey{ set.serverId, *kid, *key });
     }
+
+    if (doc->payload.contains("world"))
+    {
+        const auto& world      = doc->payload["world"];
+        auto        gateway    = world.is_object() ? getString(world, "gateway") : std::nullopt;
+        auto        expansions = world.is_object() ? getUInt32(world, "expansions") : std::nullopt;
+        if (!gateway || gateway->empty() || !expansions)
+        {
+            return fail("key set world needs gateway and expansions");
+        }
+        set.world = WorldInfo{ *gateway, *expansions, std::nullopt };
+        if (world.contains("search"))
+        {
+            set.world->search = getString(world, "search");
+            if (!set.world->search)
+            {
+                return fail("key set world search must be a string");
+            }
+        }
+    }
     return set;
+}
+
+auto Registry::create(const SigningKey& identity, const std::optional<std::string>& name, const std::vector<RegistryEntry>& servers,
+                      int64_t issuedAt, std::optional<int64_t> expires) -> std::string
+{
+    json list = json::array();
+    for (const auto& entry : servers)
+    {
+        json obj = { { "id", entry.id }, { "role", entry.role }, { "keyset", entry.keysetUrl } };
+        if (entry.pin)
+        {
+            obj["pin"] = *entry.pin;
+        }
+        list.push_back(obj);
+    }
+    return signDocument(identity, type, name, issuedAt, expires, json{ { "servers", list } });
+}
+
+auto Registry::open(std::string_view token, const std::string& expectedServerId, int64_t now, std::string* error) -> std::optional<Registry>
+{
+    std::string message;
+    auto        fail = [&](std::string text) -> std::optional<Registry>
+    {
+        if (error)
+        {
+            *error = std::move(text);
+        }
+        return std::nullopt;
+    };
+    auto doc = openDocument(token, type, now, message);
+    if (!doc)
+    {
+        return fail(message);
+    }
+    if (doc->serverId != expectedServerId)
+    {
+        return fail("registry belongs to " + doc->serverId + ", not " + expectedServerId);
+    }
+    auto servers = doc->payload.find("servers");
+    if (servers == doc->payload.end() || !servers->is_array())
+    {
+        return fail("registry has no servers array");
+    }
+
+    Registry registry;
+    registry.serverId = doc->serverId;
+    registry.name     = doc->name;
+    registry.issuedAt = doc->issuedAt;
+    registry.expires  = doc->expires;
+    for (const auto& node : *servers)
+    {
+        auto id   = node.is_object() ? getString(node, "id") : std::nullopt;
+        auto role = node.is_object() ? getString(node, "role") : std::nullopt;
+        auto url  = node.is_object() ? getString(node, "keyset") : std::nullopt;
+        bool http = url && (url->rfind("https://", 0) == 0 || url->rfind("http://", 0) == 0);
+        if (!id || !isValidServerId(*id) || !role || !http)
+        {
+            return fail("registry entries need id, role and an http(s) keyset URL");
+        }
+        for (const auto& existing : registry.servers)
+        {
+            if (existing.id == *id)
+            {
+                return fail("server " + *id + " is listed twice");
+            }
+        }
+        RegistryEntry entry{ *id, *role, *url, std::nullopt };
+        if (node.contains("pin"))
+        {
+            entry.pin = getString(node, "pin");
+            if (!entry.pin)
+            {
+                return fail("pin must be a string");
+            }
+        }
+        registry.servers.push_back(std::move(entry));
+    }
+    return registry;
 }
 
 auto KeySetResolver::find(const std::string& issuer, const std::string& kid) const -> std::optional<TrustedKey>

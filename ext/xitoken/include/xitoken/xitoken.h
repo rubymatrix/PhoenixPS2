@@ -89,6 +89,15 @@ public:
 };
 
 // The opened contents of a signed key set (SPEC.md "Keys and key sets").
+// What a world's key set says about the world (SPEC.md "Keys and key sets").
+struct WorldInfo
+{
+    std::string                gateway;
+    uint32_t                   expansions = 0;
+    std::optional<std::string> search; // the world's search server as "IPv4:port"
+};
+
+// The opened contents of a signed key set (SPEC.md "Keys and key sets").
 struct KeySet
 {
     static constexpr std::string_view type = "xi.keyset/1";
@@ -98,12 +107,42 @@ struct KeySet
     int64_t                    issuedAt = 0;
     std::optional<int64_t>     expires;
     std::vector<TrustedKey>    keys;
+    std::optional<WorldInfo>   world;
 
-    // Signs a key set with the server's identity key.
+    // Signs a key set with the server's identity key. Worlds pass `world`.
     static auto create(const SigningKey& identity, const std::optional<std::string>& name, const std::vector<SigningKey>& signingKeys,
-                       int64_t issuedAt, std::optional<int64_t> expires = std::nullopt) -> std::string;
+                       int64_t issuedAt, std::optional<int64_t> expires = std::nullopt, const std::optional<WorldInfo>& world = std::nullopt)
+        -> std::string;
     // Checks a signed key set; nullopt (and *error) if it is not valid at `now`.
     static auto open(std::string_view token, int64_t now, std::string* error = nullptr) -> std::optional<KeySet>;
+};
+
+// One server listed in a registry.
+struct RegistryEntry
+{
+    std::string                id;
+    std::string                role; // "world" or "provider"
+    std::string                keysetUrl;
+    std::optional<std::string> pin;
+};
+
+// A signed list of servers (SPEC.md "World list and registry"). Listing only says where to find a server; its key
+// set is still checked against its id.
+struct Registry
+{
+    static constexpr std::string_view type = "xi.registry/1";
+
+    std::string                serverId;
+    std::optional<std::string> name;
+    int64_t                    issuedAt = 0;
+    std::optional<int64_t>     expires;
+    std::vector<RegistryEntry> servers;
+
+    static auto create(const SigningKey& identity, const std::optional<std::string>& name, const std::vector<RegistryEntry>& servers,
+                       int64_t issuedAt, std::optional<int64_t> expires = std::nullopt) -> std::string;
+    // Opens a registry, but only if it belongs to `expectedServerId`; nullopt (and *error) otherwise.
+    static auto open(std::string_view token, const std::string& expectedServerId, int64_t now, std::string* error = nullptr)
+        -> std::optional<Registry>;
 };
 
 // Key resolver built from the signed key sets of the servers an operator chose to trust. Thread-safe.
