@@ -38,6 +38,7 @@ class PartySystem;
 class ConquestSystem;
 class BesiegedSystem;
 class CampaignSystem;
+class FederationGateway;
 class ColonizationSystem;
 
 class WorldEngine final : public Engine
@@ -59,6 +60,9 @@ public:
     std::unique_ptr<BesiegedSystem>     besiegedSystem_;
     std::unique_ptr<CampaignSystem>     campaignSystem_;
     std::unique_ptr<ColonizationSystem> colonizationSystem_;
+
+    // Declared before httpServer_, whose routes call into it, so it outlives the server.
+    std::unique_ptr<FederationGateway> federationGateway_;
 
     std::unique_ptr<HTTPServer> httpServer_;
 

@@ -32,7 +32,7 @@
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
-HTTPServer::HTTPServer(Scheduler& scheduler)
+HTTPServer::HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&)> registerRoutes)
 : scheduler_(scheduler)
 , apiDataCache_(APIDataCache{})
 {
@@ -47,7 +47,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler)
     ShowInfoFmt("Starting HTTP Server on http://{}:{}/api", host, port);
 
     scheduler_.postToWorkerThread(
-        [this, host, port]()
+        [this, host, port, registerRoutes = std::move(registerRoutes)]()
         {
             httpServer_.Get(
                 "/api",
@@ -165,9 +165,20 @@ HTTPServer::HTTPServer(Scheduler& scheduler)
                     res.set_content(j.dump(), "application/json");
                 });
 
+            if (registerRoutes)
+            {
+                registerRoutes(httpServer_);
+            }
+
             httpServer_.set_error_handler(
-                [](const httplib::Request& /*req*/, httplib::Response& res)
+                [](const httplib::Request& /*req*/, httplib::Response& res) -> httplib::Server::HandlerResponse
                 {
+                    // Routes that answer an error with their own body (e.g. the federation gateway's JSON) keep it.
+                    if (!res.body.empty())
+                    {
+                        return httplib::Server::HandlerResponse::Unhandled;
+                    }
+
                     auto str = fmt::format("<p>Error Status: <span style='color:red;'>{} ({})</span></p>",
                                            res.status,
                                            httplib::status_message(res.status));
@@ -178,6 +189,7 @@ HTTPServer::HTTPServer(Scheduler& scheduler)
                     }
 
                     res.set_content(str, "text/html");
+                    return httplib::Server::HandlerResponse::Handled;
                 });
 
             httpServer_.set_logger(

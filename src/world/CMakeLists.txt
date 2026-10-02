@@ -11,6 +11,8 @@ set(SOURCES
     conquest_system.h
     daily_tally.h
     daily_tally.cpp
+    federation_gateway.cpp
+    federation_gateway.h
     http_server.cpp
     http_server.h
     ipc_server.cpp
@@ -26,11 +28,17 @@ set(SOURCES
     zone_settings.h
 )
 
+# Federation gateway tokens (ext/xitoken), built against the bundled OpenSSL and json targets.
+set(XITOKEN_CRYPTO_TARGET libcrypto)
+set(XITOKEN_JSON_TARGET nlohmann_json::nlohmann_json)
+add_subdirectory(${CMAKE_SOURCE_DIR}/ext/xitoken ${CMAKE_BINARY_DIR}/ext/xitoken)
+
 xi_add_library(xi_world_lib ${SOURCES})
 target_include_directories(xi_world_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(xi_world_lib
     PUBLIC
         xi_data_core
+        xitoken
         ${WORLD_ONLY_EXTERNAL_LIBS}
 )
 

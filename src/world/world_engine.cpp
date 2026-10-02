@@ -27,10 +27,14 @@
 #include "campaign_system.h"
 #include "colonization_system.h"
 #include "conquest_system.h"
+#include "federation_gateway.h"
 #include "http_server.h"
 #include "ipc_server.h"
 #include "party_system.h"
 #include "time_server.h"
+
+#include "common/logging.h"
+#include "common/settings.h"
 
 WorldEngine::WorldEngine(Scheduler& scheduler, ZMQService& zmqService, EnableHTTPServer enableHTTPServer)
 : scheduler_(scheduler)
@@ -40,8 +44,22 @@ WorldEngine::WorldEngine(Scheduler& scheduler, ZMQService& zmqService, EnableHTT
 , besiegedSystem_(std::make_unique<BesiegedSystem>(*this))
 , campaignSystem_(std::make_unique<CampaignSystem>(*this))
 , colonizationSystem_(std::make_unique<ColonizationSystem>(*this))
-, httpServer_(enableHTTPServer ? std::make_unique<HTTPServer>(scheduler_) : nullptr)
+, federationGateway_(enableHTTPServer ? FederationGateway::create(scheduler_, *ipcServer_) : nullptr)
+, httpServer_(enableHTTPServer ? std::make_unique<HTTPServer>(scheduler_,
+                                                              [this](httplib::Server& server)
+                                                              {
+                                                                  if (federationGateway_)
+                                                                  {
+                                                                      federationGateway_->registerRoutes(server);
+                                                                  }
+                                                              })
+                               : nullptr)
 {
+    if (!enableHTTPServer && settings::get<bool>("network.ENABLE_FEDERATION_GATEWAY"))
+    {
+        ShowWarning("Federation gateway needs network.ENABLE_HTTP; it is off.");
+    }
+
     timeServerToken_ = scheduler_.intervalOnMainThread(
         kTimeServerTickInterval,
         [this]() -> Task<void>

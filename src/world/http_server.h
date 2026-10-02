@@ -28,10 +28,13 @@
 
 #include <httplib.h>
 
+#include <functional>
+
 class HTTPServer
 {
 public:
-    HTTPServer(Scheduler& scheduler);
+    // `registerRoutes` adds routes owned by other systems (e.g. the federation gateway) before the server listens.
+    HTTPServer(Scheduler& scheduler, std::function<void(httplib::Server&)> registerRoutes = {});
     ~HTTPServer();
 
     void LockingUpdate();

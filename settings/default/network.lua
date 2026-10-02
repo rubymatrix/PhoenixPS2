@@ -41,6 +41,16 @@ xi.settings.network =
     HTTP_HOST   = 'localhost',
     HTTP_PORT   = 8088,
 
+    -- Federation gateway (ext/xitoken/SPEC.md): PlayOnline providers such as Project Crystal admit players with
+    -- signed, single-use world-entry tokens (POST /xi/v1/world-entry) instead of writing accounts_sessions.
+    -- Served by xi_world's HTTP server, so it needs ENABLE_HTTP. Keep HTTP_HOST on a loopback or private
+    -- address, or put a TLS proxy in front: world-entry tokens carry the map session key.
+    ENABLE_FEDERATION_GATEWAY = false,
+    -- This world's server id; providers address tokens to it. `xitoken-cli keygen` prints it for a new identity key.
+    FEDERATION_SERVER_ID = '',
+    -- Trusted providers: one signed key set per provider, named <provider server id>.keyset. Re-read every minute.
+    FEDERATION_TRUST_DIR = 'settings/federation',
+
     -- Central message server settings
     ZMQ_TRANSPORT = 'tcp',
     ZMQ_IP        = '127.0.0.1',
