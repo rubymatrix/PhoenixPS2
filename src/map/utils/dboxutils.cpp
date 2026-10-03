@@ -31,6 +31,7 @@
 #include "items/transactions/item_claim.h"
 #include "utils/charutils.h"
 #include "utils/itemutils.h"
+#include "utils/lobbyutils.h"
 
 #include "packets/c2s/0x04d_pbx.h"
 #include "packets/s2c/0x009_message.h"
@@ -159,8 +160,8 @@ void dboxutils::AddItemsToBeSent(CCharEntity* PChar, GP_CLI_COMMAND_PBX_BOXNO Bo
                     return;
                 }
 
-                // Different accounts
-                if (PChar->accid != recvAccid)
+                // Different accounts (or no answer from the lobby's account service)
+                if (!lobbyutils::isSameAccount(PChar, recvAccid))
                 {
                     return;
                 }
@@ -773,8 +774,7 @@ void dboxutils::ConfirmNameBeforeSending(CCharEntity* PChar, GP_CLI_COMMAND_PBX_
     uint32 accid = charutils::getAccountIdFromName(receiverName);
     if (accid)
     {
-        const auto rset = db::preparedStmt("SELECT COUNT(*) FROM chars WHERE charid = ? AND accid = ? LIMIT 1", PChar->id, accid);
-        if (rset && rset->rowsCount() && rset->next() && rset->get<uint32>("COUNT(*)"))
+        if (lobbyutils::isSameAccount(PChar, accid))
         {
             PChar->pushPacket<GP_SERV_COMMAND_PBX_RESULT>(GP_CLI_COMMAND_PBX_COMMAND::Query, BoxNo, 0xFF, 0x02);
             PChar->pushPacket<GP_SERV_COMMAND_PBX_RESULT>(GP_CLI_COMMAND_PBX_COMMAND::Query, BoxNo, 0x01, 0x01);

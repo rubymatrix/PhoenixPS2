@@ -5,7 +5,8 @@
  * This module extends that functionality to persist the seal timer across all characters on the account.
  ************************************************************************/
 
-#include "common/database.h"
+#include "account_vars.h"
+
 #include "common/earth_time.h"
 #include "common/settings.h"
 #include "common/timer.h"
@@ -37,22 +38,12 @@ class AccountSealTimersModule : public CPPModule
             return;
         }
 
-        const auto rset = db::preparedStmt(
-            "SELECT value FROM account_vars WHERE accountid = ? AND varname = ? LIMIT 1",
-            PChar->accid,
-            SealTimerVarName);
-
-        if (!rset || !rset->rowsCount() || !rset->next())
-        {
-            return;
-        }
-
-        const auto expirationTimestamp = rset->get<uint32>(0);
+        // An expired timer reads as 0 and is removed by account_vars
+        const auto expirationTimestamp = static_cast<uint32>(accountvars::fetchAccountVar(PChar->account, SealTimerVarName));
         const auto currentTimestamp    = earth_time::timestamp();
 
         if (expirationTimestamp <= currentTimestamp)
         {
-            db::preparedStmt("DELETE FROM account_vars WHERE accountid = ? AND varname = ?", PChar->accid, SealTimerVarName);
             return;
         }
 
@@ -97,13 +88,7 @@ class AccountSealTimersModule : public CPPModule
         const auto expirationTimestamp = static_cast<int32>(earth_time::timestamp() + static_cast<uint32>(remainingSeconds));
 
         // Mirror the value into expiry so the row cleans itself up
-        db::preparedStmt(
-            "INSERT INTO account_vars SET accountid = ?, varname = ?, value = ?, expiry = ? "
-            "ON DUPLICATE KEY UPDATE value = VALUES(value), expiry = VALUES(expiry)",
-            PChar->accid,
-            SealTimerVarName,
-            expirationTimestamp,
-            expirationTimestamp);
+        accountvars::persistAccountVar(PChar->account, SealTimerVarName, expirationTimestamp, static_cast<uint32>(expirationTimestamp));
     }
 };
 

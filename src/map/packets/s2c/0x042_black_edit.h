@@ -42,5 +42,5 @@ public:
         uint8_t                         padding00[3]; // PS2: (New; did not exist.)
     };
 
-    GP_SERV_COMMAND_BLACK_EDIT(uint32 accId, const std::string& targetName, GP_SERV_COMMAND_BLACK_EDIT_MODE mode);
+    GP_SERV_COMMAND_BLACK_EDIT(uint32 charId, const std::string& targetName, GP_SERV_COMMAND_BLACK_EDIT_MODE mode);
 };

@@ -226,7 +226,7 @@ index b4d2d61ed3..6550859b92 100644
 +        return 0;
 +    }
 +
-+    return accountMeterFetch(PChar->accid, varName);
++    return accountMeterFetch(PChar->account, varName);
 +}
 +
 +void addFishingMeter(const CCharEntity* PChar, const std::string& varName, const int32 amount)
@@ -236,7 +236,7 @@ index b4d2d61ed3..6550859b92 100644
 +        return;
 +    }
 +
-+    accountMeterPersist(PChar->accid, varName, getFishingMeter(PChar, varName) + amount, luautils::JstMidnight());
++    accountMeterPersist(PChar->account, varName, getFishingMeter(PChar, varName) + amount, luautils::JstMidnight());
 +}
 +
 +// Nothing takes the bait once the angler has landed two hundred catches or worn themselves out

@@ -32,6 +32,7 @@
 #include "packets/s2c/0x00b_logout.h"
 
 #include "utils/charutils.h"
+#include "utils/lobbyutils.h"
 #include "utils/zoneutils.h"
 
 #include "ipc_client.h"
@@ -350,7 +351,7 @@ int32 MapNetworking::recv_parse(uint8* buff, size_t* buffsize, MapSession* PSess
 
             std::ignore = langID;
 
-            auto rset = db::preparedStmt("SELECT c.accid, s.session_key "
+            auto rset = db::preparedStmt("SELECT c.accid, s.session_key, s.lobby_token "
                                          "FROM chars c "
                                          "LEFT JOIN accounts_sessions s ON s.charid = c.charid "
                                          "WHERE c.charid = ? LIMIT 1",
@@ -374,11 +375,15 @@ int32 MapNetworking::recv_parse(uint8* buff, size_t* buffsize, MapSession* PSess
                 return -1;
             }
 
+            const auto lobbyToken = rset->isNull("lobby_token") ? std::string() : rset->get<std::string>("lobby_token");
+
             PSession->PChar     = charutils::LoadChar(packetCharID);
             PSession->charID    = packetCharID;
             PSession->accountID = accountID;
 
             auto* PChar = PSession->PChar.get();
+
+            lobbyutils::loadAccount(PChar, lobbyToken);
 
             PChar->PSession = PSession;
 

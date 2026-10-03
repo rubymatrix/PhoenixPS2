@@ -76,6 +76,7 @@ class AccountVarsModule : public CPPModule
         TracyZoneScoped;
 
         // Startup cleanup of expired account variables
+        // (keyed by the PlayOnline lobby's account: CCharEntity::account, from lobbyutils)
         uint32 currentTimestamp = earth_time::timestamp();
         db::preparedStmt("DELETE FROM account_vars WHERE expiry > 0 AND expiry <= ?", currentTimestamp);
 
@@ -86,7 +87,7 @@ class AccountVarsModule : public CPPModule
         {
             if (auto PChar = dynamic_cast<CCharEntity*>(PLuaBaseEntity->GetBaseEntity()))
             {
-                return accountvars::fetchAccountVar(PChar->accid, varname);
+                return accountvars::fetchAccountVar(PChar->account, varname);
             }
 
             return 0;
@@ -105,7 +106,7 @@ class AccountVarsModule : public CPPModule
                     expiryValue = expiry.as<uint32>();
                 }
 
-                accountvars::persistAccountVar(PChar->accid, varname, value, expiryValue);
+                accountvars::persistAccountVar(PChar->account, varname, value, expiryValue);
             }
         };
     }

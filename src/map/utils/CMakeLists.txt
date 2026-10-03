@@ -28,6 +28,8 @@ set(UTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/itemutils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/jailutils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/jailutils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/lobbyutils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/lobbyutils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/messageutils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/messageutils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/mobutils.cpp

@@ -34,6 +34,12 @@ xi.settings.network =
     -- polcore dials 51240 for IRC; move it only together with the loader (xiloader --ircport).
     PROFILE_IRC_PORT = 51240,
 
+    -- The PlayOnline lobby's account service: which PlayOnline account a character belongs to, for account-wide
+    -- limits and account-only deliveries. LOBBY_ACCOUNTS_KEY is this world's accountsKey in the lobby's lobby.cfg.
+    -- Empty: every character is an account of its own.
+    LOBBY_ACCOUNTS_URL = '',
+    LOBBY_ACCOUNTS_KEY = '',
+
     -- DB queries will attempt each query once, and reconnect and retry up to `SQL_QUERY_RETRY_COUNT` times.
     SQL_QUERY_RETRY_COUNT = 1,
 

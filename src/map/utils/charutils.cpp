@@ -379,6 +379,7 @@ auto LoadFromCharsSQL(CCharEntity* PChar) -> void
         PChar->m_moghouseID   = rset->get<uint32>("moghouse");
         PChar->loc.boundary   = rset->get<uint16>("boundary");
         PChar->accid          = rset->get<uint32>("accid");
+        PChar->account        = PChar->accid; // the character's own until the lobby says whose it is (lobbyutils)
 
         PChar->profile.home_point.destination = rset->get<xi::ZoneId>("home_zone");
         PChar->profile.home_point.p.rotation  = rset->get<uint8>("home_rot");

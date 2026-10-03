@@ -21,7 +21,7 @@
 
 #include "0x042_black_edit.h"
 
-GP_SERV_COMMAND_BLACK_EDIT::GP_SERV_COMMAND_BLACK_EDIT(uint32 accId, const std::string& targetName, const GP_SERV_COMMAND_BLACK_EDIT_MODE mode)
+GP_SERV_COMMAND_BLACK_EDIT::GP_SERV_COMMAND_BLACK_EDIT(uint32 charId, const std::string& targetName, const GP_SERV_COMMAND_BLACK_EDIT_MODE mode)
 {
     auto& packet = this->data();
 
@@ -30,7 +30,7 @@ GP_SERV_COMMAND_BLACK_EDIT::GP_SERV_COMMAND_BLACK_EDIT(uint32 accId, const std::
         case GP_SERV_COMMAND_BLACK_EDIT_MODE::Add:
         case GP_SERV_COMMAND_BLACK_EDIT_MODE::Delete:
         {
-            packet.Data.ID = accId;
+            packet.Data.ID = charId; // the blacklisted character's server id, as 0x041 sends it
             packet.Mode    = mode;
             std::memcpy(packet.Data.Name, targetName.c_str(), std::min<size_t>(targetName.size(), sizeof(packet.Data.Name)));
             break;

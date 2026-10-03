@@ -88,12 +88,12 @@ void SendBlacklist(CCharEntity* PChar)
 
     while (rset->next())
     {
-        auto accid_target = rset->get<uint32>(0);
+        auto charid_target = rset->get<uint32>(0);
         auto targetName   = rset->get<std::string>(1);
 
         if (isNameCharactersOnly(targetName))
         {
-            blacklist.emplace_back(accid_target, targetName);
+            blacklist.emplace_back(charid_target, targetName);
             currentCount++;
             totalCount++;
 

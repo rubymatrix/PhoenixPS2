@@ -372,6 +372,8 @@ set(MAP_ONLY_EXTERNAL_LIBS
     fast_obj
     earcut_hpp
     zlibstatic
+    httplib::httplib
+    nlohmann_json::nlohmann_json
 )
 
 set(SEARCH_ONLY_EXTERNAL_LIBS

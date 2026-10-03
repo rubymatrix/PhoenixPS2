@@ -33,6 +33,7 @@ CREATE TABLE `accounts_sessions` (
   `version_mismatch` tinyint(1) unsigned NOT NULL DEFAULT '0',
   `client_version` varchar(16) NOT NULL DEFAULT '',        -- lobby login version string (console builds; packets/compat)
   `client_expansions` int(10) unsigned NOT NULL DEFAULT '0', -- expansions the client has installed
+  `lobby_token` char(64) NOT NULL DEFAULT '',                -- the lobby's account service answers for the session with it (lobbyutils)
   `seacom_type` TINYINT(1) unsigned NOT NULL DEFAULT '0',
   `seacom_message` TINYBLOB NULL DEFAULT NULL,
   `last_zoneout_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

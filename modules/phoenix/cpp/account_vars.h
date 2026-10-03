@@ -2,7 +2,8 @@
  * Account Variables
  *
  * Account-wide variables stored in account_vars, shared by every character
- * on the account. Other Phoenix modules read and write them through here.
+ * on the account (CCharEntity::account, the PlayOnline lobby's account).
+ * Other Phoenix modules read and write them through here.
  ************************************************************************/
 
 #pragma once

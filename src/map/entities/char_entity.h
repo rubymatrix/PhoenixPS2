@@ -339,7 +339,10 @@ constexpr uint8 EquipSlotCount = 18;
 class CCharEntity final : public CBattleEntity
 {
 public:
-    uint32 accid{}; // Account ID associated with the character.
+    uint32 accid{};   // The PlayOnline content id the character is on (chars.accid)
+    uint32 account{}; // The PlayOnline account it belongs to, from the lobby (lobbyutils); keys account-wide state
+
+    std::vector<uint32> accountContentIds; // The account's content ids, from the lobby; empty without its answer
 
     MapSession* PSession = nullptr;
 
